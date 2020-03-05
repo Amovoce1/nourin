@@ -75,7 +75,7 @@ $ git clone --branch 'master' 'https://github.com/Niruon/Nourin.git' ~/Nourin
 
 ### Configuração
 
-No arquivo `Nourin.sh`, na linha 967, há o seguinte conteúdo:
+No arquivo `Nourin.sh`, na linha 876, há o seguinte conteúdo:
 
 ```
 init --token 'SEU_TOKEN_AQUI'

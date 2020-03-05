@@ -944,6 +944,6 @@ while true; do
 
 		exit '0'
 		
-	)
+	) &
 
 done
