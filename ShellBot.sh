@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 #-----------------------------------------------------------------------------------------------------------
 #	DATA:				07 de Março de 2017
@@ -95,17 +95,12 @@ readonly _BOT_SCRIPT_=${0##*/}				# Script
 readonly _CURL_OPT_=" --resolve api.telegram.org:443:149.154.167.220
 											--http2
 											--tlsv1.3
+											--tls-max 1.3
 											--header Accept:
 											--header User-Agent:
-											--no-buffer
 											--ipv4
 											--cacert $HOME/Nourin/cacert.pem
-											--globoff
-											--path-as-is
-											--proto =https
-											--tcp-nodelay
 											--no-sessionid
-											--ssl-reqd
 											--no-keepalive
 											--silent
 											--request "	# CURL (opções)

