@@ -877,7 +877,7 @@ init --token '941625429:AAFjbXBaKgIAqeFztWjknWGFja85eyj0Ps2'
 
 while true; do
 
-	getUpdates --limit '2' --offset "$(OffsetNext)" --timeout '90'
+	getUpdates --limit '1' --offset "$(OffsetNext)" --timeout '60'
 
 	(
 
